@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +25,16 @@ class SnapshotOutcome:
 
 
 class SnapshotStore:
-    """Content-addressed raw evidence plus a tiny mutable validator state."""
+    """Content-addressed raw evidence plus a tiny mutable validator state.
+
+    Accepted snapshots advance source state. Invalid responses can be quarantined
+    without replacing the last known-good ETag/hash checkpoint.
+    """
 
     def __init__(self, root: Path | str = "var") -> None:
         self.root = Path(root)
         self.raw_root = self.root / "raw"
+        self.quarantine_root = self.root / "quarantine"
         self.state_root = self.root / "state"
 
     def read_state(self, source_key: str) -> SourceState | None:
@@ -51,9 +56,7 @@ class SnapshotStore:
         if fetch.not_modified:
             if prior is None:
                 raise ValueError(f"{source.key} returned 304 without prior state")
-            updated = prior.model_copy(
-                update={"last_checked_at": fetch.fetched_at},
-            )
+            updated = prior.model_copy(update={"last_checked_at": fetch.fetched_at})
             _atomic_text(state_path, updated.model_dump_json(indent=2))
             return SnapshotOutcome(
                 changed=False,
@@ -71,33 +74,18 @@ class SnapshotStore:
 
         digest = hashlib.sha256(fetch.body).hexdigest()
         changed = prior is None or prior.latest_body_sha256 != digest
-        relative_body = self._relative_body_path(source, fetch, digest)
+        relative_body = self._relative_body_path("raw", source, fetch, digest)
         body_path = self.root / relative_body
         metadata_path = body_path.with_suffix(body_path.suffix + ".meta.json")
 
         if changed:
             _atomic_bytes(body_path, fetch.body)
-            receipt = FetchReceipt(
-                source_key=source.key,
-                url=fetch.url,
-                fetched_at=fetch.fetched_at,
-                status_code=fetch.status_code,
-                etag=fetch.headers.get("etag"),
-                last_modified=fetch.headers.get("last-modified"),
-                content_type=fetch.headers.get("content-type"),
-                body_sha256=digest,
-                body_bytes=len(fetch.body),
-                not_modified=False,
-                response_headers=_provenance_headers(fetch.headers),
+            _atomic_text(
+                metadata_path,
+                self._snapshot_meta(source, fetch, relative_body, digest, extra or {}).model_dump_json(
+                    indent=2
+                ),
             )
-            metadata = SnapshotMeta(
-                source=source,
-                receipt=receipt,
-                collector_version=__version__,
-                relative_body_path=relative_body.as_posix(),
-                extra=extra or {},
-            )
-            _atomic_text(metadata_path, metadata.model_dump_json(indent=2))
 
         state = SourceState(
             source_key=source.key,
@@ -118,15 +106,76 @@ class SnapshotStore:
             state_path=state_path,
         )
 
+    def quarantine(
+        self,
+        source: SourceSpec,
+        fetch: HttpFetch,
+        *,
+        reason: str,
+        extra: dict[str, Any] | None = None,
+    ) -> tuple[Path, Path]:
+        """Retain a bad 200-response without advancing accepted source state."""
+
+        if fetch.body is None:
+            raise ValueError("Cannot quarantine a response without a body")
+        digest = hashlib.sha256(fetch.body).hexdigest()
+        relative_body = self._relative_body_path("quarantine", source, fetch, digest)
+        body_path = self.root / relative_body
+        metadata_path = body_path.with_suffix(body_path.suffix + ".meta.json")
+        if not body_path.exists():
+            _atomic_bytes(body_path, fetch.body)
+        payload = {
+            "reason": reason,
+            "source": source.model_dump(mode="json"),
+            "receipt": self._receipt(source, fetch, digest).model_dump(mode="json"),
+            "collector_version": __version__,
+            "relative_body_path": relative_body.as_posix(),
+            "extra": extra or {},
+        }
+        _atomic_text(metadata_path, json.dumps(payload, indent=2, sort_keys=True))
+        return body_path, metadata_path
+
+    def _snapshot_meta(
+        self,
+        source: SourceSpec,
+        fetch: HttpFetch,
+        relative_body: Path,
+        digest: str,
+        extra: dict[str, Any],
+    ) -> SnapshotMeta:
+        return SnapshotMeta(
+            source=source,
+            receipt=self._receipt(source, fetch, digest),
+            collector_version=__version__,
+            relative_body_path=relative_body.as_posix(),
+            extra=extra,
+        )
+
+    def _receipt(self, source: SourceSpec, fetch: HttpFetch, digest: str) -> FetchReceipt:
+        return FetchReceipt(
+            source_key=source.key,
+            url=fetch.url,
+            fetched_at=fetch.fetched_at,
+            status_code=fetch.status_code,
+            etag=fetch.headers.get("etag"),
+            last_modified=fetch.headers.get("last-modified"),
+            content_type=fetch.headers.get("content-type"),
+            body_sha256=digest,
+            body_bytes=len(fetch.body or b""),
+            not_modified=False,
+            response_headers=_provenance_headers(fetch.headers),
+        )
+
     def _relative_body_path(
         self,
+        bucket: str,
         source: SourceSpec,
         fetch: HttpFetch,
         digest: str,
     ) -> Path:
         day = fetch.fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
         extension = _extension(fetch.headers.get("content-type"))
-        return Path("raw") / source.key / day / f"{digest}{extension}"
+        return Path(bucket) / source.key / day / f"{digest}{extension}"
 
     def _state_path(self, source_key: str) -> Path:
         return self.state_root / f"{source_key}.json"
