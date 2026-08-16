@@ -107,8 +107,9 @@ class ConditionalHttpClient:
 
 
 def _backoff_seconds(attempt: int) -> float:
-    base = min(2 ** (attempt - 1), 16)
-    return base + random.uniform(0.0, 0.5)
+    base = float(min(2 ** (attempt - 1), 16))
+    jitter = float(random.uniform(0.0, 0.5))
+    return base + jitter
 
 
 def _retry_delay(response: httpx.Response, attempt: int) -> float:
