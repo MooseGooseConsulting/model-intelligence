@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -80,12 +80,14 @@ class SnapshotStore:
 
         if changed:
             _atomic_bytes(body_path, fetch.body)
-            _atomic_text(
-                metadata_path,
-                self._snapshot_meta(source, fetch, relative_body, digest, extra or {}).model_dump_json(
-                    indent=2
-                ),
+            snapshot_meta = self._snapshot_meta(
+                source,
+                fetch,
+                relative_body,
+                digest,
+                extra or {},
             )
+            _atomic_text(metadata_path, snapshot_meta.model_dump_json(indent=2))
 
         state = SourceState(
             source_key=source.key,
@@ -173,7 +175,7 @@ class SnapshotStore:
         fetch: HttpFetch,
         digest: str,
     ) -> Path:
-        day = fetch.fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        day = fetch.fetched_at.astimezone(UTC).strftime("%Y-%m-%d")
         extension = _extension(fetch.headers.get("content-type"))
         return Path(bucket) / source.key / day / f"{digest}{extension}"
 
