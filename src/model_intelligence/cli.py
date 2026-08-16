@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -18,6 +19,7 @@ app.add_typer(collect_app, name="collect")
 console = Console()
 
 Collector = Callable[[ConditionalHttpClient, SnapshotStore], Awaitable[SnapshotOutcome]]
+RuntimeRoot = Annotated[Path, typer.Option(help="Runtime snapshot/state root.")]
 
 
 async def _run(name: str, collector: Collector, root: Path) -> SnapshotOutcome:
@@ -44,30 +46,22 @@ def _print_outcome(name: str, outcome: SnapshotOutcome) -> None:
 
 
 @collect_app.command("models-dev")
-def collect_models_dev(
-    root: Path = typer.Option(Path("var"), help="Runtime snapshot/state root."),
-) -> None:
+def collect_models_dev(root: RuntimeRoot = Path("var")) -> None:
     asyncio.run(_run("models.dev", models_dev.collect, root))
 
 
 @collect_app.command("openrouter-models")
-def collect_openrouter_models(
-    root: Path = typer.Option(Path("var"), help="Runtime snapshot/state root."),
-) -> None:
+def collect_openrouter_models(root: RuntimeRoot = Path("var")) -> None:
     asyncio.run(_run("OpenRouter models", openrouter.collect_models, root))
 
 
 @collect_app.command("arena-manifest")
-def collect_arena_manifest(
-    root: Path = typer.Option(Path("var"), help="Runtime snapshot/state root."),
-) -> None:
+def collect_arena_manifest(root: RuntimeRoot = Path("var")) -> None:
     asyncio.run(_run("Arena HF parquet manifest", arena.collect_manifest, root))
 
 
 @collect_app.command("bootstrap")
-def collect_bootstrap(
-    root: Path = typer.Option(Path("var"), help="Runtime snapshot/state root."),
-) -> None:
+def collect_bootstrap(root: RuntimeRoot = Path("var")) -> None:
     async def run_all() -> None:
         store = SnapshotStore(root)
         async with ConditionalHttpClient() as client:
