@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Collector runtime state and raw evidence
+var/
+data/raw/
+data/state/
+
+# Local analytical outputs
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Browser artifacts
+playwright-report/
+test-results/
