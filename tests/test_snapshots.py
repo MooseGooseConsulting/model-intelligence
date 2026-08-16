@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from model_intelligence.contracts import SourceKind, SourceSpec
@@ -18,7 +18,7 @@ SOURCE = SourceSpec(
 def _fetch(body: bytes | None, *, status: int = 200, etag: str = '"v1"') -> HttpFetch:
     return HttpFetch(
         url="https://example.com/data.json",
-        fetched_at=datetime(2026, 8, 16, 7, 0, tzinfo=timezone.utc),
+        fetched_at=datetime(2026, 8, 16, 7, 0, tzinfo=UTC),
         status_code=status,
         headers={"content-type": "application/json", "etag": etag},
         body=body,
@@ -30,6 +30,7 @@ def test_content_addressed_snapshot_and_same_body_do_not_duplicate(tmp_path: Pat
 
     first = store.persist(SOURCE, _fetch(b'{"ok":true}'))
     second = store.persist(SOURCE, _fetch(b'{"ok":true}', etag='"v2"'))
+    state = store.read_state(SOURCE.key)
 
     assert first.changed is True
     assert first.body_path is not None and first.body_path.exists()
@@ -37,7 +38,8 @@ def test_content_addressed_snapshot_and_same_body_do_not_duplicate(tmp_path: Pat
     assert second.changed is False
     assert second.body_path == first.body_path
     assert second.metadata_path is None
-    assert store.read_state(SOURCE.key).etag == '"v2"'  # type: ignore[union-attr]
+    assert state is not None
+    assert state.etag == '"v2"'
 
 
 def test_304_advances_last_checked_only(tmp_path: Path) -> None:
