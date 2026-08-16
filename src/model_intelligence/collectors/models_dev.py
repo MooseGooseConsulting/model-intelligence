@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import HttpUrl
+
 from model_intelligence.collectors.common import collect_json_source
 from model_intelligence.contracts import SourceKind, SourceSpec
 from model_intelligence.http import ConditionalHttpClient
@@ -10,7 +12,7 @@ from model_intelligence.snapshots import SnapshotOutcome, SnapshotStore
 SOURCE = SourceSpec(
     key="models-dev.catalog",
     kind=SourceKind.API,
-    url="https://models.dev/api.json",
+    url=HttpUrl("https://models.dev/api.json"),
     canonical=False,
     expected_content_type="application/json",
 )
