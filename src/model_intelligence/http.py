@@ -3,13 +3,17 @@ from __future__ import annotations
 import asyncio
 import email.utils
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Mapping
+from datetime import UTC, datetime
 
 import httpx
 
 _RETRYABLE_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+_DEFAULT_USER_AGENT = (
+    "MooseGoose-Model-Intelligence/0.1 "
+    "(+https://github.com/MooseGooseConsulting/model-intelligence)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +40,7 @@ class ConditionalHttpClient:
     def __init__(
         self,
         *,
-        user_agent: str = "MooseGoose-Model-Intelligence/0.1 (+https://github.com/MooseGooseConsulting/model-intelligence)",
+        user_agent: str = _DEFAULT_USER_AGENT,
         timeout_seconds: float = 30.0,
         max_attempts: int = 4,
     ) -> None:
@@ -93,7 +97,7 @@ class ConditionalHttpClient:
 
             return HttpFetch(
                 url=str(response.url),
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
                 status_code=response.status_code,
                 headers={key.lower(): value for key, value in response.headers.items()},
                 body=None if response.status_code == 304 else response.content,
@@ -116,6 +120,6 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
             parsed = email.utils.parsedate_to_datetime(raw)
             if parsed is not None:
                 if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=timezone.utc)
-                return max((parsed - datetime.now(timezone.utc)).total_seconds(), 0.0)
+                    parsed = parsed.replace(tzinfo=UTC)
+                return max((parsed - datetime.now(UTC)).total_seconds(), 0.0)
     return _backoff_seconds(attempt)
