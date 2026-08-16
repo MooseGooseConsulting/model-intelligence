@@ -73,9 +73,12 @@ def _validate_manifest(payload: Any) -> dict[str, Any]:
     if missing:
         raise ValueError(f"Arena text tables missing from manifest: {missing}")
 
+    required_text_tables = sorted(
+        f"{config}/{split}" for config, split in _REQUIRED_TEXT_TABLES
+    )
     return {
         "parquet_file_count": len(files),
         "table_count": len(tables),
         "total_parquet_bytes": total_bytes,
-        "required_text_tables": sorted(f"{config}/{split}" for config, split in _REQUIRED_TEXT_TABLES),
+        "required_text_tables": required_text_tables,
     }
