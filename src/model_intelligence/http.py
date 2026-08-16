@@ -117,8 +117,9 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
         try:
             return max(float(raw), 0.0)
         except ValueError:
-            parsed = email.utils.parsedate_to_datetime(raw)
-            if parsed is not None:
+            parsed_value = email.utils.parsedate_to_datetime(raw)
+            if isinstance(parsed_value, datetime):
+                parsed = parsed_value
                 if parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=UTC)
                 return max((parsed - datetime.now(UTC)).total_seconds(), 0.0)
