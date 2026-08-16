@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import HttpUrl
+
 from model_intelligence.collectors.common import collect_json_source
 from model_intelligence.contracts import SourceKind, SourceSpec
 from model_intelligence.http import ConditionalHttpClient
@@ -10,7 +12,7 @@ from model_intelligence.snapshots import SnapshotOutcome, SnapshotStore
 PARQUET_MANIFEST_SOURCE = SourceSpec(
     key="arena.leaderboard-dataset.parquet-manifest",
     kind=SourceKind.DATASET,
-    url=(
+    url=HttpUrl(
         "https://datasets-server.huggingface.co/parquet"
         "?dataset=lmarena-ai%2Fleaderboard-dataset"
     ),
@@ -62,8 +64,12 @@ def _validate_manifest(payload: Any) -> dict[str, Any]:
         split = row.get("split")
         url = row.get("url")
         size = row.get("size")
-        if not all(isinstance(value, str) and value for value in (config, split, url)):
-            raise ValueError("parquet file entry missing config/split/url")
+        if not isinstance(config, str) or not config:
+            raise ValueError("parquet file entry missing config")
+        if not isinstance(split, str) or not split:
+            raise ValueError("parquet file entry missing split")
+        if not isinstance(url, str) or not url:
+            raise ValueError("parquet file entry missing url")
         if not isinstance(size, int) or size < 0:
             raise ValueError("parquet file entry has invalid size")
         tables.add((config, split))
